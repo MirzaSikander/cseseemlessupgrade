@@ -37,7 +37,13 @@ var (
 )
 
 func GenerateScript() string {
-	commands := `echo "hello" > "/tmp/log-$(date +"%m-%d-%Y-%T").log"`
+	commands := `
+filepath="/tmp/test-$(date +"%m-%d-%Y-%T").log"
+echo "hello" > $filepath
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  sleep 5
+  echo "$i: waited 5 secs" >> $filepath
+done`
 	return base64.StdEncoding.EncodeToString([]byte(commands))
 }
 
@@ -66,7 +72,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("virtual machine scale set extension:", *vmssExt.ID)
+	log.Println("virtual machine scale set extension updated:", *vmssExt.ID)
 
 	status, err := UpgradeInstance(ctx, cred, resourceGroupName, vmScaleSetName)
 	if err != nil {
