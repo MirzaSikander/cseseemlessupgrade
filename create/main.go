@@ -33,16 +33,10 @@ import (
 )
 
 var (
-	subscriptionID      string
-	location            = "westus2"
-	prefix              = "mirsik" // Replace with your alias.
-	resourceGroupName   = prefix + "-rg"
-	virtualNetworkName  = prefix + "-vn"
-	subnetName          = prefix + "-subnet"
-	vmScaleSetName      = prefix + "-vmss"
-	bastionHostName     = prefix + "-bhost"
-	publicIPAddressName = prefix + "-ip"
-	username            = "azureuser"
+	subscriptionID string
+	prefix         string
+	location       = "westus2"
+	username       = "azureuser"
 )
 
 func main() {
@@ -51,49 +45,61 @@ func main() {
 		log.Fatal("AZURE_SUBSCRIPTION_ID is not set.")
 	}
 
+	prefix = os.Getenv("MS_ALIAS")
+	if len(subscriptionID) == 0 {
+		log.Fatal("MS_ALIAS is not set.")
+	}
+
+	resourceGroupName := prefix + "-rg"
+	virtualNetworkName := prefix + "-vn"
+	subnetName := prefix + "-subnet"
+	vmScaleSetName := prefix + "-vmss"
+	bastionHostName := prefix + "-bhost"
+	publicIPAddressName := prefix + "-ip"
+
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx := context.Background()
-	resourceGroup, err := createResourceGroup(ctx, cred)
+	resourceGroup, err := createResourceGroup(ctx, cred, resourceGroupName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("resources group:", *resourceGroup.ID)
 
-	virtualNetwork, err := createVirtualNetwork(ctx, cred)
+	virtualNetwork, err := createVirtualNetwork(ctx, cred, resourceGroupName, virtualNetworkName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("virtual network:", *virtualNetwork.ID)
 
-	subnet, err := createSubnet(ctx, cred, subnetName, "10.1.0.0/24")
+	subnet, err := createSubnet(ctx, cred, resourceGroupName, virtualNetworkName, subnetName, "10.1.0.0/24")
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("subnet:", *subnet.ID)
 
 	password := "A5" + RandStringBytes(10)
-	vmss, err := createVMSS(ctx, cred, *subnet.ID, username, password)
+	vmss, err := createVMSS(ctx, cred, resourceGroupName, vmScaleSetName, *subnet.ID, username, password)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("virtual machine scale sets:", *vmss.ID)
 
-	publicIP, err := createPublicIP(ctx, cred)
+	publicIP, err := createPublicIP(ctx, cred, resourceGroupName, publicIPAddressName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("public IP:", *publicIP.ID)
 
-	bastionsubnet, err := createSubnet(ctx, cred, "AzureBastionSubnet", "10.1.1.0/24")
+	bastionsubnet, err := createSubnet(ctx, cred, resourceGroupName, virtualNetworkName, "AzureBastionSubnet", "10.1.1.0/24")
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("subnet:", *subnet.ID)
 
-	bastionHost, err := createBastion(ctx, cred, *bastionsubnet.ID, *publicIP.ID)
+	bastionHost, err := createBastion(ctx, cred, resourceGroupName, virtualNetworkName, bastionHostName, *bastionsubnet.ID, *publicIP.ID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -104,7 +110,7 @@ func main() {
 	log.Println("Username: ", username, " password: ", password)
 }
 
-func createResourceGroup(ctx context.Context, cred azcore.TokenCredential) (*armresources.ResourceGroup, error) {
+func createResourceGroup(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string) (*armresources.ResourceGroup, error) {
 	resourceGroupClient := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
 
 	resourceGroupResp, err := resourceGroupClient.CreateOrUpdate(
@@ -120,7 +126,7 @@ func createResourceGroup(ctx context.Context, cred azcore.TokenCredential) (*arm
 	return &resourceGroupResp.ResourceGroup, nil
 }
 
-func createVirtualNetwork(ctx context.Context, cred azcore.TokenCredential) (*armnetwork.VirtualNetwork, error) {
+func createVirtualNetwork(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, virtualNetworkName string) (*armnetwork.VirtualNetwork, error) {
 	virtualNetworkClient := armnetwork.NewVirtualNetworksClient(subscriptionID, cred, nil)
 
 	pollerResp, err := virtualNetworkClient.BeginCreateOrUpdate(
@@ -150,7 +156,7 @@ func createVirtualNetwork(ctx context.Context, cred azcore.TokenCredential) (*ar
 	return &resp.VirtualNetwork, nil
 }
 
-func createSubnet(ctx context.Context, cred azcore.TokenCredential, subnetName string, addressPrefix string) (*armnetwork.Subnet, error) {
+func createSubnet(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, virtualNetworkName string, subnetName string, addressPrefix string) (*armnetwork.Subnet, error) {
 	subnetsClient := armnetwork.NewSubnetsClient(subscriptionID, cred, nil)
 
 	pollerResp, err := subnetsClient.BeginCreateOrUpdate(
@@ -176,7 +182,7 @@ func createSubnet(ctx context.Context, cred azcore.TokenCredential, subnetName s
 	return &resp.Subnet, nil
 }
 
-func createVMSS(ctx context.Context, cred azcore.TokenCredential, subnetID string, username string, password string) (*armcompute.VirtualMachineScaleSet, error) {
+func createVMSS(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, vmScaleSetName string, subnetID string, username string, password string) (*armcompute.VirtualMachineScaleSet, error) {
 	vmssClient := armcompute.NewVirtualMachineScaleSetsClient(subscriptionID, cred, nil)
 
 	pollerResp, err := vmssClient.BeginCreateOrUpdate(
@@ -249,7 +255,7 @@ func createVMSS(ctx context.Context, cred azcore.TokenCredential, subnetID strin
 	return &resp.VirtualMachineScaleSet, nil
 }
 
-func createPublicIP(ctx context.Context, cred azcore.TokenCredential) (*armnetwork.PublicIPAddress, error) {
+func createPublicIP(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, publicIPAddressName string) (*armnetwork.PublicIPAddress, error) {
 	publicIPClient := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
 
 	pollerResp, err := publicIPClient.BeginCreateOrUpdate(
@@ -279,7 +285,7 @@ func createPublicIP(ctx context.Context, cred azcore.TokenCredential) (*armnetwo
 	return &resp.PublicIPAddress, nil
 }
 
-func createBastion(ctx context.Context, cred azcore.TokenCredential, subnetID string, publicIpId string) (*armnetwork.BastionHost, error) {
+func createBastion(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, virtualNetworkName string, bastionHostName string, subnetID string, publicIpId string) (*armnetwork.BastionHost, error) {
 	bastionHostClient := armnetwork.NewBastionHostsClient(subscriptionID, cred, nil)
 
 	pollerResp, err := bastionHostClient.BeginCreateOrUpdate(

@@ -31,11 +31,9 @@ import (
 )
 
 var (
-	subscriptionID    string
-	prefix            = "mirsik" // Replace with your alias.
-	resourceGroupName = prefix + "-rg"
-	vmScaleSetName    = prefix + "-vmss"
-	vmScaleSetExtName = prefix + "-vmssExt"
+	subscriptionID string
+	prefix         string
+	version        = 1 // Update this to rerun the extension.
 )
 
 func GenerateScript() string {
@@ -49,19 +47,28 @@ func main() {
 		log.Fatal("AZURE_SUBSCRIPTION_ID is not set.")
 	}
 
+	prefix = os.Getenv("MS_ALIAS")
+	if len(subscriptionID) == 0 {
+		log.Fatal("MS_ALIAS is not set.")
+	}
+
+	resourceGroupName := prefix + "-rg"
+	vmScaleSetName := prefix + "-vmss"
+	vmScaleSetExtName := prefix + "-vmssExt"
+
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx := context.Background()
 
-	vmssExt, err := AddExtension(ctx, cred)
+	vmssExt, err := AddExtension(ctx, cred, resourceGroupName, vmScaleSetName, vmScaleSetExtName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("virtual machine scale set extension:", *vmssExt.ID)
 
-	status, err := UpgradeInstance(ctx, cred)
+	status, err := UpgradeInstance(ctx, cred, resourceGroupName, vmScaleSetName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,7 +76,7 @@ func main() {
 
 }
 
-func AddExtension(ctx context.Context, cred azcore.TokenCredential) (*armcompute.VirtualMachineScaleSetExtension, error) {
+func AddExtension(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, vmScaleSetName string, vmScaleSetExtName string) (*armcompute.VirtualMachineScaleSetExtension, error) {
 	vmssExtClient := armcompute.NewVirtualMachineScaleSetExtensionsClient(subscriptionID, cred, nil)
 
 	pollerResp, err := vmssExtClient.BeginCreateOrUpdate(
@@ -86,7 +93,7 @@ func AddExtension(ctx context.Context, cred azcore.TokenCredential) (*armcompute
 				ProtectedSettings: map[string]interface{}{
 					"script": GenerateScript(),
 				},
-				ForceUpdateTag: to.StringPtr("6"),
+				ForceUpdateTag: to.StringPtr(string(version)),
 			},
 		},
 		nil,
@@ -102,7 +109,7 @@ func AddExtension(ctx context.Context, cred azcore.TokenCredential) (*armcompute
 	return &resp.VirtualMachineScaleSetExtension, nil
 }
 
-func UpgradeInstance(ctx context.Context, cred azcore.TokenCredential) (*string, error) {
+func UpgradeInstance(ctx context.Context, cred azcore.TokenCredential, resourceGroupName string, vmScaleSetName string) (*string, error) {
 	vmssVmsClient := armcompute.NewVirtualMachineScaleSetsClient(subscriptionID, cred, nil)
 
 	pollerResp, err := vmssVmsClient.BeginUpdateInstances(ctx, resourceGroupName, vmScaleSetName, armcompute.VirtualMachineScaleSetVMInstanceRequiredIDs{InstanceIDs: []*string{to.StringPtr("0")}}, nil)
